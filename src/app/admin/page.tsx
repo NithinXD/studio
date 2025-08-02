@@ -7,7 +7,7 @@ import type { Document, DocumentStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { User, FileType, CheckCircle2, XCircle, Hourglass, Filter, X } from 'lucide-react';
+import { User, FileType, CheckCircle2, XCircle, Hourglass, Filter, X, Download } from 'lucide-react';
 import { withAuth, getUsernameFromEmail } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getAllDocumentsFromFirestore } from '@/lib/firebaseService';
@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { debugDocuments } from '@/lib/debugUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { downloadWatermarkedPdf, type WatermarkStatus } from '@/lib/pdfWatermark';
 
 const StatusBadge = ({ status }: { status: DocumentStatus }) => {
   switch (status) {
@@ -54,6 +55,35 @@ function AdminDashboardPage() {
   const [userFilter, setUserFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('Pending');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
+
+  const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
+    setDownloadingWatermark(doc.id);
+    try {
+      // Fetch the PDF from the URL
+      const response = await fetch(doc.url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF');
+      }
+      
+      const pdfBytes = await response.arrayBuffer();
+      await downloadWatermarkedPdf(pdfBytes, status, doc.name);
+      
+      toast({
+        title: 'Download Complete',
+        description: `Watermarked PDF downloaded successfully with ${status} status.`,
+      });
+    } catch (error) {
+      console.error('Error downloading watermarked PDF:', error);
+      toast({
+        variant: "destructive",
+        title: "Download Failed",
+        description: "Failed to download watermarked PDF. Please try again.",
+      });
+    } finally {
+      setDownloadingWatermark(null);
+    }
+  };
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -116,7 +146,7 @@ function AdminDashboardPage() {
 
   const clearFilters = () => {
     setUserFilter('all');
-    setStatusFilter('all');
+    setStatusFilter('Pending'); // Reset to default pending status
     setSearchQuery('');
   };
 
@@ -195,16 +225,17 @@ function AdminDashboardPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Admin Action Time</TableHead>
                 <TableHead>Suggestions</TableHead>
+                <TableHead>Watermarked PDF</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                 <TableRow>
-                    <TableCell colSpan={8}>
-                        <Skeleton className="h-8 w-full" />
-                    </TableCell>
-                </TableRow>
+                     <TableRow>
+                        <TableCell colSpan={9}>
+                            <Skeleton className="h-8 w-full" />
+                        </TableCell>
+                    </TableRow>
               ) : filteredDocuments.length > 0 ? (
                 filteredDocuments.map((doc: Document) => (
                   <TableRow key={doc.id}>
@@ -256,6 +287,26 @@ function AdminDashboardPage() {
                         {doc.suggestion || '-'}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {(doc.status === 'Approved' || doc.status === 'Declined') ? (
+                        <Button
+                          onClick={() => downloadWatermarkedDocument(doc, doc.status as WatermarkStatus)}
+                          variant="outline"
+                          size="sm"
+                          className={`${
+                            doc.status === 'Approved' 
+                              ? 'text-green-600 border-green-200 hover:bg-green-50' 
+                              : 'text-red-600 border-red-200 hover:bg-red-50'
+                          }`}
+                          disabled={downloadingWatermark === doc.id}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          {downloadingWatermark === doc.id ? 'Preparing...' : doc.status}
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button asChild size="sm">
                         <Link href={`/admin/review/${doc.id}`}>Review</Link>
@@ -265,7 +316,7 @@ function AdminDashboardPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
                     {documents.length === 0 
                       ? "No documents have been submitted yet."
                       : "No documents match the current filters."

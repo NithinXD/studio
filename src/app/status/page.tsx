@@ -8,11 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, CheckCircle2, XCircle, Hourglass, Printer, Eye } from 'lucide-react';
+import { FileText, CheckCircle2, XCircle, Hourglass, Printer, Eye, Download } from 'lucide-react';
 import { withAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getUserDocumentsFromFirestore } from '@/lib/firebaseService';
 import { useToast } from '@/hooks/use-toast';
+import { downloadWatermarkedPdf, type WatermarkStatus } from '@/lib/pdfWatermark';
 
 const StatusBadge = ({ status }: { status: DocumentStatus }) => {
   switch (status) {
@@ -52,6 +53,35 @@ function StatusPage() {
   const { toast } = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
+
+  const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
+    setDownloadingWatermark(doc.id);
+    try {
+      // Fetch the PDF from the URL
+      const response = await fetch(doc.url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF');
+      }
+      
+      const pdfBytes = await response.arrayBuffer();
+      await downloadWatermarkedPdf(pdfBytes, status, doc.name);
+      
+      toast({
+        title: 'Download Complete',
+        description: `Watermarked PDF downloaded successfully with ${status} status.`,
+      });
+    } catch (error) {
+      console.error('Error downloading watermarked PDF:', error);
+      toast({
+        variant: "destructive",
+        title: "Download Failed",
+        description: "Failed to download watermarked PDF. Please try again.",
+      });
+    } finally {
+      setDownloadingWatermark(null);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -484,15 +514,16 @@ function StatusPage() {
                 <TableHead className="w-[15%]">Document Name</TableHead>
                 <TableHead className="w-[15%]">Upload Date & Time</TableHead>
                 <TableHead className="w-[15%]">Admin Decision</TableHead>
-                <TableHead className="w-[25%]">Suggestion</TableHead>
-                <TableHead className="w-[15%] text-right">Status</TableHead>
+                <TableHead className="w-[20%]">Suggestion</TableHead>
+                <TableHead className="w-[10%] text-right">Status</TableHead>
+                <TableHead className="w-[10%] text-center">Watermarked</TableHead>
                 <TableHead className="w-[15%] text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                        <Skeleton className="h-8 w-full" />
                     </TableCell>
                 </TableRow>
@@ -539,6 +570,30 @@ function StatusPage() {
                     <TableCell className="text-right">
                       <StatusBadge status={doc.status} />
                     </TableCell>
+                    <TableCell className="text-center">
+                      {(doc.status === 'Approved' || doc.status === 'Declined') ? (
+                        <Button
+                          onClick={() => downloadWatermarkedDocument(doc, doc.status as WatermarkStatus)}
+                          variant="outline"
+                          size="sm"
+                          className={`h-8 w-8 p-0 ${
+                            doc.status === 'Approved' 
+                              ? 'text-green-600 border-green-200 hover:bg-green-50' 
+                              : 'text-red-600 border-red-200 hover:bg-red-50'
+                          }`}
+                          disabled={downloadingWatermark === doc.id}
+                          title={`Download ${doc.status} watermarked PDF`}
+                        >
+                          {downloadingWatermark === doc.id ? (
+                            <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                          ) : (
+                            <Download className="h-3 w-3" />
+                          )}
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1 justify-center">
                         <Button
@@ -565,7 +620,7 @@ function StatusPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
                     You have not uploaded any documents yet.
                   </TableCell>
                 </TableRow>
