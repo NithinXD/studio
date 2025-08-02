@@ -19,7 +19,18 @@ const EMAIL_TO_USERNAME: { [key: string]: string } = {
   "virudhunagartmills@gmail.com":"Virudhunagar Mills",
   "kappalurtmills@gmail.com":"Kappalur Mills",
   "nilakottaitmills@gmail.com":"Nilakottai Mills",
-  "tmill@gmail.com": "TMILLS"
+  "tmill@gmail.com": "TMILLS",
+  "hr@gmail.com": "HR",
+  "hometex1@gmail.com": "Hometex1",
+  "hometex@gmail.com": "Hometex",
+  "u3tech@gmail.com": "U3 Tech",
+  "vtmtech@gmail.com": "VTM Tech",
+  "marketing@domain.com": "Marketing",
+  "tech@gmail.com": "Tech",
+  "ee@gmail.com": "EE",
+  "cotton@gmail.com": "Cotton",
+  "stores@gmail.com": "Stores",
+  "finance@gmail.com": "Finance"
 };
 
 // Helper function to get username from email
