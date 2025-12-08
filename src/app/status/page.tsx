@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, CheckCircle2, XCircle, Hourglass, Printer, Eye, Download } from 'lucide-react';
+import { FileText, CheckCircle2, XCircle, Hourglass, Printer, Eye, Download, Trash2 } from 'lucide-react';
 import { withAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getUserDocumentsFromFirestore } from '@/lib/firebaseService';
+import { deleteDocumentFromFirestore, getUserDocumentsFromFirestore } from '@/lib/firebaseService';
 import { useToast } from '@/hooks/use-toast';
 import { downloadWatermarkedPdf, type WatermarkStatus } from '@/lib/pdfWatermark';
+import { deletePdfFromSupabase } from '@/lib/supabasePdfUpload';
 
 const StatusBadge = ({ status }: { status: DocumentStatus }) => {
   switch (status) {
@@ -54,6 +55,7 @@ function StatusPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
 
   const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
     setDownloadingWatermark(doc.id);
@@ -236,6 +238,40 @@ function StatusPage() {
         title: "Print Error",
         description: "Failed to generate individual document report.",
       });
+    }
+  };
+
+  const handleDeleteDocument = async (doc: Document) => {
+    if (doc.status !== 'Pending') {
+      toast({
+        variant: 'destructive',
+        title: 'Delete not allowed',
+        description: 'Only pending documents can be deleted.',
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete "${doc.name}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingDocumentId(doc.id);
+    try {
+      await deletePdfFromSupabase(doc.url);
+      await deleteDocumentFromFirestore(doc.id);
+      setDocuments((prev) => prev.filter((item) => item.id !== doc.id));
+      toast({
+        title: 'Document deleted',
+        description: `"${doc.name}" was removed.`,
+      });
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Delete failed',
+        description: 'Could not delete the document. Please try again.',
+      });
+    } finally {
+      setDeletingDocumentId(null);
     }
   };
 
@@ -614,6 +650,22 @@ function StatusPage() {
                         >
                           <Eye className="h-3 w-3" />
                         </Button>
+                        {doc.status === 'Pending' && (
+                          <Button
+                            onClick={() => handleDeleteDocument(doc)}
+                            variant="destructive"
+                            size="sm"
+                            className="h-8 w-8 p-0 flex-shrink-0"
+                            title="Delete Pending Document"
+                            disabled={deletingDocumentId === doc.id}
+                          >
+                            {deletingDocumentId === doc.id ? (
+                              <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" />
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
