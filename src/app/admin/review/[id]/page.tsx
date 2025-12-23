@@ -1,9 +1,10 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { DocumentReviewClient } from './DocumentReviewClient';
 import { withAuth } from '@/hooks/use-auth';
@@ -13,14 +14,21 @@ import { getDocumentFromFirestore } from '@/lib/firebaseService';
 import { useToast } from '@/hooks/use-toast';
 
 
-function DocumentReviewPage({ params }: { params: { id: string } }) {
+function DocumentReviewPage() {
   const { toast } = useToast();
+  const params = useParams<{ id?: string | string[] }>();
+  const documentId = useMemo(() => {
+    const raw = params?.id;
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw)) return raw[0] ?? '';
+    return '';
+  }, [params]);
   const [document, setDocument] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!params.id) {
+    if (!documentId) {
       setLoading(false);
       setError("No document ID provided.");
       return;
@@ -29,7 +37,7 @@ function DocumentReviewPage({ params }: { params: { id: string } }) {
     const fetchDocument = async () => {
       setLoading(true);
       try {
-        const doc = await getDocumentFromFirestore(params.id);
+        const doc = await getDocumentFromFirestore(documentId);
         if (doc) {
           setDocument(doc as Document);
         } else {
@@ -49,7 +57,7 @@ function DocumentReviewPage({ params }: { params: { id: string } }) {
     };
 
     fetchDocument();
-  }, [params.id, toast]);
+  }, [documentId, toast]);
 
 
   if (loading) {
