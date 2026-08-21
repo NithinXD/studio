@@ -16,9 +16,9 @@ const EMAIL_TO_USERNAME: { [key: string]: string } = {
   "tca@gmail.com": "TCARTS",
   "newschool@gmail.com": "New School",
   "aalampattitmills@gmail.com": "Aalampatti Mills",
-  "virudhunagartmills@gmail.com":"Virudhunagar Mills",
-  "kappalurtmills@gmail.com":"Kappalur Mills",
-  "nilakottaitmills@gmail.com":"Nilakottai Mills",
+  "virudhunagartmills@gmail.com": "Virudhunagar Mills",
+  "kappalurtmills@gmail.com": "Kappalur Mills",
+  "nilakottaitmills@gmail.com": "Nilakottai Mills",
   "tmill@gmail.com": "TMILLS",
   "hr@gmail.com": "HR",
   "hometex1@gmail.com": "Hometex1",
@@ -30,7 +30,18 @@ const EMAIL_TO_USERNAME: { [key: string]: string } = {
   "ee@gmail.com": "EE",
   "cotton@gmail.com": "Cotton",
   "stores@gmail.com": "Stores",
-  "finance@gmail.com": "Finance"
+  "finance@gmail.com": "Finance",
+  "vtm@gmail.com": "VTM",
+  "vtmfinance@gmail.com": "VTM Finance",
+  "thiagarajarmills@gmail.com": "Thiagarajar Mills",
+  "auditortmilla@gmail.com": "Auditor Tmills",
+  "cs@gmail.com": "CS",
+  "ttsl@gmail.com": "TTSL",
+  "taxation@gmail.com": "Taxation",
+  "civil@gmail.com": "Civil",
+  "ctl@gmail.com": "CTL",
+  "it@gmail.com": "IT",
+  "edp@gmail.com": "EDP"
 };
 
 // Helper function to get username from email
@@ -51,7 +62,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isAdmin: false,
   loading: true,
-  logout: () => {},
+  logout: () => { },
   username: "Unknown",
 });
 
@@ -104,7 +115,7 @@ export function withAuth<P extends object>(
       }
 
       if (options.adminOnly && !isAdmin) {
-        router.replace('/'); 
+        router.replace('/');
       }
     }, [user, loading, isAdmin, router]);
 
