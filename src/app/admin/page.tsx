@@ -14,7 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getAllDocumentsFromFirestore } from '@/lib/firebaseService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { debugDocuments } from '@/lib/debugUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { downloadWatermarkedPdf, type WatermarkStatus } from '@/lib/pdfWatermark';
@@ -59,6 +58,10 @@ function AdminDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>('Pending');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
     setDownloadingWatermark(doc.id);
@@ -91,14 +94,16 @@ function AdminDashboardPage() {
   useEffect(() => {
     const fetchDocuments = async () => {
       setLoading(true);
+      const startTime = performance.now();
       try {
         const allDocuments = await getAllDocumentsFromFirestore();
+        const endTime = performance.now();
+        
+        console.log(`⏱️ Dashboard Fetch Time: ${(endTime - startTime).toFixed(2)} ms (${allDocuments.length} documents)`);
+        
         setDocuments(allDocuments);
         setFilteredDocuments(allDocuments);
         
-        // Debug: Log document structure
-        console.log('=== ADMIN DEBUG ===');
-        await debugDocuments();
       } catch (error) {
         console.error('Error fetching documents:', error);
         toast({
@@ -143,6 +148,7 @@ function AdminDashboardPage() {
     }
 
     setFilteredDocuments(filtered);
+    setCurrentPage(1);
   }, [documents, selectedAccountEmail, statusFilter, searchQuery]);
 
   // Get unique users for filter dropdown
@@ -202,6 +208,12 @@ function AdminDashboardPage() {
 
   const isFiltersActive = Boolean(searchQuery.trim()) || statusFilter !== 'Pending';
 
+  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
+  const paginatedDocuments = filteredDocuments.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -222,9 +234,6 @@ function AdminDashboardPage() {
                   <Folder className="h-4 w-4" />
                   <span className="font-medium text-foreground">{selectedAccountName}</span>
                 </div>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Showing {filteredDocuments.length} of {documents.length} documents
               </div>
             </div>
 
@@ -287,8 +296,8 @@ function AdminDashboardPage() {
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
-                  ) : filteredDocuments.length > 0 ? (
-                    filteredDocuments.map((doc: Document) => (
+                  ) : paginatedDocuments.length > 0 ? (
+                    paginatedDocuments.map((doc: Document) => (
                       <TableRow key={doc.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -387,15 +396,36 @@ function AdminDashboardPage() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-end space-x-2 py-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <div className="text-sm text-muted-foreground">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
           </>
         ) : (
           <>
             {/* Accounts root */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {uniqueUsers.length} accounts • {documents.length} documents
-              </div>
-            </div>
+            <div className="mb-4"></div>
 
             <div className="border rounded-md">
               <Table>

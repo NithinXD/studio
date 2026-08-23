@@ -41,7 +41,8 @@ const EMAIL_TO_USERNAME: { [key: string]: string } = {
   "civil@gmail.com": "Civil",
   "ctl@gmail.com": "CTL",
   "it@gmail.com": "IT",
-  "edp@gmail.com": "EDP"
+  "edp@gmail.com": "EDP",
+  "transport@gmail.com": "Transport"
 };
 
 // Helper function to get username from email
