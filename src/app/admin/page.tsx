@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -9,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Download, FileType, Filter, Folder, Hourglass, User, X, XCircle, CheckCircle2 } from 'lucide-react';
-import { withAuth, getUsernameFromEmail } from '@/hooks/use-auth';
+import { withAuth, getUsernameFromEmail, type UserProfile } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAllDocumentsFromFirestore } from '@/lib/firebaseService';
+import { getAllDocumentsFromFirestore, getAllUserProfiles } from '@/lib/firebaseService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -46,173 +45,180 @@ const StatusBadge = ({ status }: { status: DocumentStatus }) => {
   }
 };
 
-
 function AdminDashboardPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
-  const [selectedAccountEmail, setSelectedAccountEmail] = useState<string | null>(null);
+  
   const [statusFilter, setStatusFilter] = useState<string>('Pending');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
   
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
 
-  const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
-    setDownloadingWatermark(doc.id);
-    try {
-      // Fetch the PDF from the URL
-      const response = await fetch(doc.url);
-      if (!response.ok) {
-        throw new Error('Failed to fetch PDF');
-      }
-      
-      const pdfBytes = await response.arrayBuffer();
-      await downloadWatermarkedPdf(pdfBytes, status, doc.name);
-      
-      toast({
-        title: 'Download Complete',
-        description: `Watermarked PDF downloaded successfully with ${status} status.`,
-      });
-    } catch (error) {
-      console.error('Error downloading watermarked PDF:', error);
-      toast({
-        variant: "destructive",
-        title: "Download Failed",
-        description: "Failed to download watermarked PDF. Please try again.",
-      });
-    } finally {
-      setDownloadingWatermark(null);
-    }
-  };
-
   useEffect(() => {
-    const fetchDocuments = async () => {
+    const fetchData = async () => {
       setLoading(true);
-      const startTime = performance.now();
       try {
-        const allDocuments = await getAllDocumentsFromFirestore();
-        const endTime = performance.now();
+        const [allDocs, allProfilesArray] = await Promise.all([
+          getAllDocumentsFromFirestore(),
+          getAllUserProfiles()
+        ]);
         
-        console.log(`⏱️ Dashboard Fetch Time: ${(endTime - startTime).toFixed(2)} ms (${allDocuments.length} documents)`);
+        const profileMap: Record<string, UserProfile> = {};
+        allProfilesArray.forEach(p => {
+          profileMap[p.id] = p;
+        });
         
-        setDocuments(allDocuments);
-        setFilteredDocuments(allDocuments);
-        
+        setDocuments(allDocs);
+        setProfiles(profileMap);
       } catch (error) {
-        console.error('Error fetching documents:', error);
+        console.error('Error fetching dashboard data:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to load documents. Please try again.",
+          description: "Failed to load dashboard data. Please try again.",
         });
       } finally {
         setLoading(false);
       }
     };
-
-    fetchDocuments();
+    fetchData();
   }, [toast]);
 
-  // Sync selected account from URL (?account=<email>)
-  useEffect(() => {
-    const account = searchParams.get('account');
-    setSelectedAccountEmail(account);
-  }, [searchParams]);
+  const selectedCategory = searchParams.get('category');
+  const selectedUserId = searchParams.get('user');
 
-  // Filter documents based on user, status, and search query
-  useEffect(() => {
-    let filtered = documents;
+  // Enriched Documents: Combine document with user profile info
+  const enrichedDocs = useMemo(() => {
+    return documents.map(doc => {
+      const profile = profiles[doc.userId];
+      return {
+        ...doc,
+        category: profile?.category || 'Uncategorized',
+        userName: profile?.name || doc.userEmail || 'Unknown User'
+      };
+    });
+  }, [documents, profiles]);
 
-    // Filter by selected account
-    if (selectedAccountEmail) {
-      filtered = filtered.filter(doc => doc.userEmail === selectedAccountEmail);
-    }
+  // Aggregations: Start with all known profiles so empty users appear
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, { total: number, pending: number, approved: number, declined: number }> = {};
+    
+    // Initialize stats for all known categories from profiles
+    Object.values(profiles).forEach(p => {
+      const cat = p.category || 'Uncategorized';
+      if (!stats[cat]) stats[cat] = { total: 0, pending: 0, approved: 0, declined: 0 };
+    });
 
-    // Filter by status
+    enrichedDocs.forEach(doc => {
+      const cat = doc.category;
+      if (!stats[cat]) stats[cat] = { total: 0, pending: 0, approved: 0, declined: 0 };
+      stats[cat].total++;
+      if (doc.status === 'Pending') stats[cat].pending++;
+      if (doc.status === 'Approved') stats[cat].approved++;
+      if (doc.status === 'Declined') stats[cat].declined++;
+    });
+    return stats;
+  }, [enrichedDocs, profiles]);
+
+  const userStats = useMemo(() => {
+    if (!selectedCategory) return {};
+    const stats: Record<string, { total: number, pending: number, approved: number, declined: number, name: string }> = {};
+    
+    // Initialize stats for all users in the selected category
+    Object.values(profiles).filter(p => (p.category || 'Uncategorized') === selectedCategory).forEach(p => {
+      stats[p.id] = { total: 0, pending: 0, approved: 0, declined: 0, name: p.name || 'Unknown User' };
+    });
+
+    enrichedDocs.filter(d => d.category === selectedCategory).forEach(doc => {
+      const uid = doc.userId;
+      if (!stats[uid]) stats[uid] = { total: 0, pending: 0, approved: 0, declined: 0, name: doc.userName };
+      stats[uid].total++;
+      if (doc.status === 'Pending') stats[uid].pending++;
+      if (doc.status === 'Approved') stats[uid].approved++;
+      if (doc.status === 'Declined') stats[uid].declined++;
+    });
+    return stats;
+  }, [enrichedDocs, selectedCategory, profiles]);
+
+  // Filter documents for Level 3
+  const level3Docs = useMemo(() => {
+    if (!selectedCategory || !selectedUserId) return [];
+    let filtered = enrichedDocs.filter(d => d.category === selectedCategory && d.userId === selectedUserId);
+    
     if (statusFilter !== 'all') {
       filtered = filtered.filter(doc => doc.status === statusFilter);
     }
-
-    // Filter by search query (document name and reason)
+    
     if (searchQuery.trim()) {
       filtered = filtered.filter(doc => 
         doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (doc.reason && doc.reason.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
+    return filtered;
+  }, [enrichedDocs, selectedCategory, selectedUserId, statusFilter, searchQuery]);
 
-    setFilteredDocuments(filtered);
+  // Pagination for Level 3
+  useEffect(() => {
     setCurrentPage(1);
-  }, [documents, selectedAccountEmail, statusFilter, searchQuery]);
+  }, [statusFilter, searchQuery, selectedCategory, selectedUserId]);
 
-  // Get unique users for filter dropdown
-  const uniqueUsers = Array.from(new Set(documents.map(doc => doc.userEmail)))
-    .map(email => ({
-      email,
-      username: getUsernameFromEmail(email)
-    }))
-    .sort((a, b) => a.username.localeCompare(b.username));
-
-  const accountCounts = useMemo(() => {
-    const counts = new Map<
-      string,
-      { total: number; pending: number; approved: number; declined: number }
-    >();
-
-    for (const doc of documents) {
-      const current = counts.get(doc.userEmail) ?? {
-        total: 0,
-        pending: 0,
-        approved: 0,
-        declined: 0,
-      };
-
-      current.total += 1;
-      if (doc.status === 'Pending') current.pending += 1;
-      if (doc.status === 'Approved') current.approved += 1;
-      if (doc.status === 'Declined') current.declined += 1;
-
-      counts.set(doc.userEmail, current);
-    }
-
-    return counts;
-  }, [documents]);
-
-  const clearFilters = () => {
-    setStatusFilter('Pending'); // Reset to default pending status
-    setSearchQuery('');
-  };
-
-  const openAccount = (email: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('account', email);
-    router.push(`/admin?${params.toString()}`);
-  };
-
-  const backToAccounts = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete('account');
-    const query = params.toString();
-    router.push(query ? `/admin?${query}` : '/admin');
-  };
-
-  const selectedAccountName = selectedAccountEmail
-    ? getUsernameFromEmail(selectedAccountEmail)
-    : null;
-
-  const isFiltersActive = Boolean(searchQuery.trim()) || statusFilter !== 'Pending';
-
-  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
-  const paginatedDocuments = filteredDocuments.slice(
+  const totalPages = Math.ceil(level3Docs.length / itemsPerPage);
+  const paginatedDocuments = level3Docs.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  const downloadWatermarkedDocument = async (doc: Document, status: WatermarkStatus) => {
+    setDownloadingWatermark(doc.id);
+    try {
+      const response = await fetch(doc.url);
+      if (!response.ok) throw new Error('Failed to fetch PDF');
+      const pdfBytes = await response.arrayBuffer();
+      await downloadWatermarkedPdf(pdfBytes, status, doc.name);
+      toast({
+        title: 'Download Complete',
+        description: `Watermarked PDF downloaded successfully with ${status} status.`,
+      });
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast({ variant: "destructive", title: "Download Failed", description: "Failed to download PDF." });
+    } finally {
+      setDownloadingWatermark(null);
+    }
+  };
+
+  const clearFilters = () => {
+    setStatusFilter('Pending');
+    setSearchQuery('');
+  };
+
+  const openCategory = (cat: string) => {
+    router.push(`/admin?category=${encodeURIComponent(cat)}`);
+  };
+
+  const openUser = (uid: string) => {
+    router.push(`/admin?category=${encodeURIComponent(selectedCategory!)}&user=${encodeURIComponent(uid)}`);
+  };
+
+  const backToCategories = () => {
+    router.push('/admin');
+  };
+
+  const backToUsers = () => {
+    router.push(`/admin?category=${encodeURIComponent(selectedCategory!)}`);
+  };
+
+  const isFiltersActive = Boolean(searchQuery.trim()) || statusFilter !== 'Pending';
+  
+  const selectedUserName = selectedUserId ? profiles[selectedUserId]?.name || 'Unknown User' : null;
 
   return (
     <Card>
@@ -221,23 +227,22 @@ function AdminDashboardPage() {
         <CardDescription>Review and manage all document submissions.</CardDescription>
       </CardHeader>
       <CardContent>
-        {selectedAccountEmail ? (
+        {/* LEVEL 3: Documents */}
+        {selectedCategory && selectedUserId ? (
           <>
-            {/* Account header + back */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={backToAccounts}>
+                <Button variant="outline" size="sm" onClick={backToUsers}>
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Back
                 </Button>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Folder className="h-4 w-4" />
-                  <span className="font-medium text-foreground">{selectedAccountName}</span>
+                  <span className="font-medium text-foreground">{selectedCategory} / {selectedUserName}</span>
                 </div>
               </div>
             </div>
 
-            {/* Filters (within account) */}
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="flex-1">
                 <Input
@@ -279,7 +284,6 @@ function AdminDashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Document Name</TableHead>
-                    <TableHead>User</TableHead>
                     <TableHead>Reason for Upload</TableHead>
                     <TableHead>Upload Date-Time</TableHead>
                     <TableHead>Status</TableHead>
@@ -292,12 +296,10 @@ function AdminDashboardPage() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={9}>
-                        <Skeleton className="h-8 w-full" />
-                      </TableCell>
+                      <TableCell colSpan={8}><Skeleton className="h-8 w-full" /></TableCell>
                     </TableRow>
                   ) : paginatedDocuments.length > 0 ? (
-                    paginatedDocuments.map((doc: Document) => (
+                    paginatedDocuments.map((doc: any) => (
                       <TableRow key={doc.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -305,27 +307,16 @@ function AdminDashboardPage() {
                             {doc.name}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            {getUsernameFromEmail(doc.userEmail)}
-                          </div>
-                        </TableCell>
                         <TableCell className="text-sm max-w-[250px]">
                           <div className="truncate" title={doc.reason || 'No reason provided'}>
-                            {doc.reason || (
-                              <span className="text-muted-foreground italic">No reason provided</span>
-                            )}
+                            {doc.reason || <span className="text-muted-foreground italic">No reason provided</span>}
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">
                             <div>{new Date(doc.uploadDate).toLocaleDateString()}</div>
                             <div className="text-muted-foreground text-xs">
-                              {new Date(doc.uploadDate).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
+                              {new Date(doc.uploadDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
                         </TableCell>
@@ -337,13 +328,7 @@ function AdminDashboardPage() {
                             <div className="text-sm">
                               <div>{new Date(doc.adminDecisionDate).toLocaleDateString()}</div>
                               <div className="text-muted-foreground text-xs">
-                                {new Date(doc.adminDecisionDate).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                                {doc.adminDecisionBy && (
-                                  <div>by {getUsernameFromEmail(doc.adminDecisionBy)}</div>
-                                )}
+                                {new Date(doc.adminDecisionDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </div>
                           ) : (
@@ -351,23 +336,14 @@ function AdminDashboardPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-xs max-w-[200px]">
-                          <div className="truncate" title={doc.suggestion || '-'}>
-                            {doc.suggestion || '-'}
-                          </div>
+                          <div className="truncate" title={doc.suggestion || '-'}>{doc.suggestion || '-'}</div>
                         </TableCell>
                         <TableCell>
                           {doc.status === 'Approved' || doc.status === 'Declined' ? (
                             <Button
-                              onClick={() =>
-                                downloadWatermarkedDocument(doc, doc.status as WatermarkStatus)
-                              }
-                              variant="outline"
-                              size="sm"
-                              className={`${
-                                doc.status === 'Approved'
-                                  ? 'text-green-600 border-green-200 hover:bg-green-50'
-                                  : 'text-red-600 border-red-200 hover:bg-red-50'
-                              }`}
+                              onClick={() => downloadWatermarkedDocument(doc, doc.status as WatermarkStatus)}
+                              variant="outline" size="sm"
+                              className={`${doc.status === 'Approved' ? 'text-green-600 border-green-200 hover:bg-green-50' : 'text-red-600 border-red-200 hover:bg-red-50'}`}
                               disabled={downloadingWatermark === doc.id}
                             >
                               <Download className="h-3 w-3 mr-1" />
@@ -386,52 +362,45 @@ function AdminDashboardPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
-                        {documents.length === 0
-                          ? 'No documents have been submitted yet.'
-                          : 'No documents match the current filters.'}
+                      <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
+                        No documents match the current filters.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
-
-            {/* Pagination Controls */}
+            
             {totalPages > 1 && (
               <div className="flex items-center justify-end space-x-2 py-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <div className="text-sm text-muted-foreground">
-                  Page {currentPage} of {totalPages}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>Previous</Button>
+                <div className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</div>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>Next</Button>
               </div>
             )}
           </>
-        ) : (
+        ) : selectedCategory ? (
+          
+          /* LEVEL 2: Users */
           <>
-            {/* Accounts root */}
-            <div className="mb-4"></div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={backToCategories}>
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Back
+                </Button>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Folder className="h-4 w-4" />
+                  <span className="font-medium text-foreground">{selectedCategory}</span>
+                </div>
+              </div>
+            </div>
 
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Account</TableHead>
+                    <TableHead>User Name</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Pending</TableHead>
                     <TableHead>Approved</TableHead>
@@ -442,39 +411,81 @@ function AdminDashboardPage() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={6}>
-                        <Skeleton className="h-8 w-full" />
-                      </TableCell>
+                      <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
                     </TableRow>
-                  ) : uniqueUsers.length > 0 ? (
-                    uniqueUsers.map((user) => {
-                      const counts =
-                        accountCounts.get(user.email) ??
-                        ({ total: 0, pending: 0, approved: 0, declined: 0 } as const);
-                      return (
-                        <TableRow key={user.email}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <Folder className="h-4 w-4 text-muted-foreground" />
-                              {user.username}
-                            </div>
-                          </TableCell>
-                          <TableCell>{counts.total}</TableCell>
-                          <TableCell>{counts.pending}</TableCell>
-                          <TableCell>{counts.approved}</TableCell>
-                          <TableCell>{counts.declined}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" onClick={() => openAccount(user.email)}>
-                              Open
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
+                  ) : Object.keys(userStats).length > 0 ? (
+                    Object.entries(userStats).map(([uid, stats]) => (
+                      <TableRow key={uid}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            {stats.name}
+                          </div>
+                        </TableCell>
+                        <TableCell>{stats.total}</TableCell>
+                        <TableCell>{stats.pending}</TableCell>
+                        <TableCell>{stats.approved}</TableCell>
+                        <TableCell>{stats.declined}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" onClick={() => openUser(uid)}>Open</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
                   ) : (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                        No accounts found yet.
+                        No users found in this category.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        ) : (
+          
+          /* LEVEL 1: Categories */
+          <>
+            <div className="mb-4"></div>
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Pending</TableHead>
+                    <TableHead>Approved</TableHead>
+                    <TableHead>Declined</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
+                    </TableRow>
+                  ) : Object.keys(categoryStats).length > 0 ? (
+                    Object.entries(categoryStats).sort((a,b) => a[0].localeCompare(b[0])).map(([cat, stats]) => (
+                      <TableRow key={cat}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Folder className="h-4 w-4 text-muted-foreground" />
+                            {cat}
+                          </div>
+                        </TableCell>
+                        <TableCell>{stats.total}</TableCell>
+                        <TableCell>{stats.pending}</TableCell>
+                        <TableCell>{stats.approved}</TableCell>
+                        <TableCell>{stats.declined}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" onClick={() => openCategory(cat)}>Open</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                        No categories found.
                       </TableCell>
                     </TableRow>
                   )}

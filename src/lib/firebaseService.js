@@ -10,7 +10,8 @@ import {
   query, 
   where, 
   orderBy,
-  getDoc
+  getDoc,
+  setDoc
 } from 'firebase/firestore';
 
 const DOCUMENTS_COLLECTION = 'documents';
@@ -156,3 +157,55 @@ export async function deleteDocumentFromFirestore(documentId) {
     throw new Error(`Failed to delete document: ${error.message}`);
   }
 }
+
+const USERS_COLLECTION = 'users';
+
+export async function createUserProfile(userId, profileData) {
+  try {
+    await setDoc(doc(db, USERS_COLLECTION, userId), {
+      ...profileData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Error creating user profile:', error);
+    throw new Error(`Failed to create user profile: ${error.message}`);
+  }
+}
+
+export async function getUserProfile(userId) {
+  try {
+    const docSnap = await getDoc(doc(db, USERS_COLLECTION, userId));
+    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+  } catch (error) {
+    console.error('Error getting user profile:', error);
+    throw new Error(`Failed to get user profile: ${error.message}`);
+  }
+}
+
+export async function updateUserProfile(userId, updateData) {
+  try {
+    const docRef = doc(db, USERS_COLLECTION, userId);
+    await setDoc(docRef, {
+      ...updateData,
+      updatedAt: new Date()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw new Error(`Failed to update user profile: ${error.message}`);
+  }
+}
+
+export async function getAllUserProfiles() {
+  try {
+    const querySnapshot = await getDocs(collection(db, USERS_COLLECTION));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting all user profiles:', error);
+    throw new Error(`Failed to get all user profiles: ${error.message}`);
+  }
+}
+

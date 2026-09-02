@@ -2,19 +2,21 @@
 'use client';
 
 import Link from 'next/link';
-import { FileText, Shield, LogIn, LogOut, Menu, X } from 'lucide-react';
+import { FileText, Shield, LogIn, LogOut, Menu, X, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
 import { useState } from 'react';
 
 export function Header() {
-  const { user, isAdmin, logout, username } = useAuth();
+  const { user, userProfile, isAdmin, logout, username, loading, profileLoading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
+
+  const needsMigration = user && !loading && !profileLoading && (!userProfile || (!isAdmin && !userProfile.category));
 
   return (
     <header className="bg-card/80 backdrop-blur-sm shadow-sm sticky top-0 z-40 border-b">
@@ -24,12 +26,21 @@ export function Header() {
           <span className="font-headline">TAAS</span>
         </Link>
         
-        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-2">
-          {user && isAdmin ? (
-            // Admin navigation - only Admin and Logout
+          {needsMigration ? (
+            <Button variant="outline" onClick={logout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </Button>
+          ) : user && isAdmin ? (
             <>
               <span className="text-sm text-muted-foreground mr-4">Welcome, {username}</span>
+              <Button variant="ghost" asChild>
+                <Link href="/profile">
+                  <UserCircle className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
+              </Button>
               <Button variant="ghost" asChild>
                 <Link href="/admin">
                   <Shield className="mr-2 h-4 w-4" />
@@ -57,6 +68,12 @@ export function Header() {
               {user ? (
                 <>
                   <span className="text-sm text-muted-foreground mr-4">Welcome, {username}</span>
+                  <Button variant="ghost" asChild>
+                    <Link href="/profile">
+                      <UserCircle className="mr-2 h-4 w-4" />
+                      Profile
+                    </Link>
+                  </Button>
                   <Button variant="outline" onClick={logout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
@@ -93,10 +110,21 @@ export function Header() {
       {isMobileMenuOpen && (
         <nav className="md:hidden bg-card/95 backdrop-blur-sm border-t">
           <div className="container mx-auto p-4 space-y-2">
-            {user && isAdmin ? (
+            {needsMigration ? (
+              <Button variant="outline" className="w-full justify-start" onClick={() => { logout(); setIsMobileMenuOpen(false); }}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+            ) : user && isAdmin ? (
               // Admin mobile navigation
               <>
                 <div className="text-sm text-muted-foreground mb-3">Welcome, {username}</div>
+                <Button variant="ghost" className="w-full justify-start" asChild>
+                  <Link href="/profile" onClick={() => setIsMobileMenuOpen(false)}>
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </Button>
                 <Button variant="ghost" className="w-full justify-start" asChild>
                   <Link href="/admin" onClick={() => setIsMobileMenuOpen(false)}>
                     <Shield className="mr-2 h-4 w-4" />
@@ -129,6 +157,12 @@ export function Header() {
                 {user ? (
                   <>
                     <div className="text-sm text-muted-foreground my-2">Welcome, {username}</div>
+                    <Button variant="ghost" className="w-full justify-start" asChild>
+                      <Link href="/profile" onClick={() => setIsMobileMenuOpen(false)}>
+                        <UserCircle className="mr-2 h-4 w-4" />
+                        Profile
+                      </Link>
+                    </Button>
                     <Button variant="outline" className="w-full justify-start" onClick={() => { logout(); setIsMobileMenuOpen(false); }}>
                       <LogOut className="mr-2 h-4 w-4" />
                       Logout

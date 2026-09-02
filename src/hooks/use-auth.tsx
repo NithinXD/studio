@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -6,77 +5,81 @@ import { getAuth, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { app } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getUserProfile } from '@/lib/firebaseService';
+import { ProfileMigrationModal } from '@/components/ProfileMigrationModal';
 
-const ADMIN_EMAIL = "tcedocs2025@gmail.com";
+// Add any new admin emails here if the admin decides to change their email address
+export const ADMIN_EMAILS = ["tcedocs2025@gmail.com"];
 
-// Username mapping for emails
-const EMAIL_TO_USERNAME: { [key: string]: string } = {
-  "tcedocs2025@gmail.com": "Admin",
-  "tce@gmail.com": "TCE",
-  "tca@gmail.com": "TCARTS",
-  "newschool@gmail.com": "New School",
-  "aalampattitmills@gmail.com": "Aalampatti Mills",
-  "virudhunagartmills@gmail.com": "Virudhunagar Mills",
-  "kappalurtmills@gmail.com": "Kappalur Mills",
-  "nilakottaitmills@gmail.com": "Nilakottai Mills",
-  "tmill@gmail.com": "TMILLS",
-  "hr@gmail.com": "HR",
-  "hometex1@gmail.com": "Hometex1",
-  "hometex@gmail.com": "Hometex",
-  "u3tech@gmail.com": "U3 Tech",
-  "vtmtech@gmail.com": "VTM Tech",
-  "marketing@domain.com": "Marketing",
-  "tech@gmail.com": "Tech",
-  "ee@gmail.com": "EE",
-  "cotton@gmail.com": "Cotton",
-  "stores@gmail.com": "Stores",
-  "finance@gmail.com": "Finance",
-  "vtm@gmail.com": "VTM",
-  "vtmfinance@gmail.com": "VTM Finance",
-  "thiagarajarmills@gmail.com": "Thiagarajar Mills",
-  "auditortmilla@gmail.com": "Auditor Tmills",
-  "cs@gmail.com": "CS",
-  "ttsl@gmail.com": "TTSL",
-  "taxation@gmail.com": "Taxation",
-  "civil@gmail.com": "Civil",
-  "ctl@gmail.com": "CTL",
-  "it@gmail.com": "IT",
-  "edp@gmail.com": "EDP",
-  "transport@gmail.com": "Transport"
-};
-
-// Helper function to get username from email
-export const getUsernameFromEmail = (email: string | null | undefined): string => {
-  if (!email) return "Unknown";
-  return EMAIL_TO_USERNAME[email] || "Unknown";
-};
+export interface UserProfile {
+  id: string;
+  name?: string;
+  category?: string;
+  email?: string;
+  [key: string]: any;
+}
 
 interface AuthContextType {
   user: User | null;
+  userProfile: UserProfile | null;
   isAdmin: boolean;
   loading: boolean;
+  profileLoading: boolean;
   logout: () => void;
   username: string;
 }
 
+export const getUsernameFromEmail = (email: string | null | undefined): string => {
+  return email ? email.split('@')[0] : "Unknown";
+};
+
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  userProfile: null,
   isAdmin: false,
   loading: true,
-  logout: () => { },
+  profileLoading: true,
+  logout: () => {},
   username: "Unknown",
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  
   const auth = getAuth(app);
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
       setLoading(false);
+      
+      if (firebaseUser) {
+        setProfileLoading(true);
+        try {
+          const profile = await getUserProfile(firebaseUser.uid) as UserProfile | null;
+          
+          // Auto-sync email if the user verified a new email address
+          if (profile && firebaseUser.email && profile.email !== firebaseUser.email) {
+            const { updateUserProfile } = await import('@/lib/firebaseService');
+            await updateUserProfile(firebaseUser.uid, { email: firebaseUser.email });
+            setUserProfile({ ...profile, email: firebaseUser.email });
+          } else {
+            setUserProfile(profile);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile", error);
+          setUserProfile(null);
+        } finally {
+          setProfileLoading(false);
+        }
+      } else {
+        setUserProfile(null);
+        setProfileLoading(false);
+      }
     });
 
     return () => unsubscribe();
@@ -87,11 +90,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     router.push('/login');
   };
 
-  const isAdmin = user?.email === ADMIN_EMAIL;
-  const username = getUsernameFromEmail(user?.email);
+  const isAdmin = Boolean(userProfile?.role === 'admin' || (user?.email && ADMIN_EMAILS.includes(user.email)));
+  
+  const username = userProfile?.name || getUsernameFromEmail(user?.email);
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, loading, logout, username }}>
+    <AuthContext.Provider value={{ user, userProfile, isAdmin, loading, profileLoading, logout, username }}>
       {children}
     </AuthContext.Provider>
   );
@@ -104,7 +108,7 @@ export function withAuth<P extends object>(
   options: { adminOnly?: boolean } = {}
 ) {
   const WithAuthComponent = (props: P) => {
-    const { user, loading, isAdmin } = useAuth();
+    const { user, userProfile, loading, profileLoading, isAdmin } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
@@ -118,15 +122,23 @@ export function withAuth<P extends object>(
       if (options.adminOnly && !isAdmin) {
         router.replace('/');
       }
-    }, [user, loading, isAdmin, router]);
+    }, [user, loading, isAdmin, router, options.adminOnly]);
 
-    if (loading || !user || (options.adminOnly && !isAdmin)) {
+    if (loading || profileLoading || !user || (options.adminOnly && !isAdmin)) {
       return (
         <div className="space-y-4">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
       );
+    }
+
+    // Admin needs migration ONLY if they have no profile. Regular users need it if they have no profile OR no category.
+    const isAdminUser = Boolean(userProfile?.role === 'admin' || (user?.email && ADMIN_EMAILS.includes(user.email)));
+    const needsMigration = !userProfile || (!isAdminUser && !userProfile.category);
+    
+    if (needsMigration) {
+      return <ProfileMigrationModal />;
     }
 
     return <WrappedComponent {...props} />;
