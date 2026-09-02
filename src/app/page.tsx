@@ -12,7 +12,7 @@ export default function Home() {
             Welcome to TAAS
           </CardTitle>
           <CardDescription className="text-lg text-foreground pt-4">
-            Thiagarajar Approval Automation System
+            Thiagarajar Approval Automation System
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -282,11 +282,11 @@ function AdminDashboardPage() {
                     <TableHead>User</TableHead>
                     <TableHead>Reason for Upload</TableHead>
                     <TableHead>Upload Date-Time</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Admin Action Time</TableHead>
                     <TableHead>Suggestions</TableHead>
                     <TableHead>Watermarked PDF</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -329,6 +329,11 @@ function AdminDashboardPage() {
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button asChild size="sm">
+                            <Link href={`/admin/review/${doc.id}`}>Review</Link>
+                          </Button>
+                        </TableCell>
                         <TableCell>
                           <StatusBadge status={doc.status} />
                         </TableCell>
@@ -350,6 +355,7 @@ function AdminDashboardPage() {
                             <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
+                        
                         <TableCell className="text-muted-foreground text-xs max-w-[200px]">
                           <div className="truncate" title={doc.suggestion || '-'}>
                             {doc.suggestion || '-'}
@@ -377,11 +383,7 @@ function AdminDashboardPage() {
                             <span className="text-muted-foreground text-sm">-</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button asChild size="sm">
-                            <Link href={`/admin/review/${doc.id}`}>Review</Link>
-                          </Button>
-                        </TableCell>
+                        
                       </TableRow>
                     ))
                   ) : (
