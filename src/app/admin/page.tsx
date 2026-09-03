@@ -278,15 +278,15 @@ function AdminDashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Document Name</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Reason for Upload</TableHead>
-                    <TableHead>Upload Date-Time</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Admin Action Time</TableHead>
-                    <TableHead>Suggestions</TableHead>
-                    <TableHead>Watermarked PDF</TableHead>
+                    <TableHead className="w-[250px] min-w-[250px]">Document Name</TableHead>
+                    <TableHead className="w-[150px] min-w-[150px]">User</TableHead>
+                    <TableHead className="w-[250px] min-w-[250px]">Reason for Upload</TableHead>
+                    <TableHead className="w-[150px] min-w-[150px]">Upload Date-Time</TableHead>
+                    <TableHead className="w-[100px] min-w-[100px]">Action</TableHead>
+                    <TableHead className="w-[120px] min-w-[120px]">Status</TableHead>
+                    <TableHead className="w-[160px] min-w-[160px]">Admin Action Time</TableHead>
+                    <TableHead className="w-[200px] min-w-[200px]">Suggestions</TableHead>
+                    <TableHead className="w-[160px] min-w-[160px]">Watermarked PDF</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -299,10 +299,10 @@ function AdminDashboardPage() {
                   ) : paginatedDocuments.length > 0 ? (
                     paginatedDocuments.map((doc: Document) => (
                       <TableRow key={doc.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <FileType className="h-4 w-4 text-muted-foreground" />
-                            {doc.name}
+                        <TableCell className="font-medium max-w-[250px] w-[250px]">
+                          <div className="flex items-center gap-2 truncate" title={doc.name}>
+                            <FileType className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="truncate">{doc.name}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -311,7 +311,7 @@ function AdminDashboardPage() {
                             {getUsernameFromEmail(doc.userEmail)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm max-w-[250px]">
+                        <TableCell className="text-sm max-w-[250px] w-[250px]">
                           <div className="truncate" title={doc.reason || 'No reason provided'}>
                             {doc.reason || (
                               <span className="text-muted-foreground italic">No reason provided</span>
