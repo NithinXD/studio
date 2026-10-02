@@ -11,7 +11,8 @@ import {
   where, 
   orderBy,
   getDoc,
-  Timestamp
+  Timestamp,
+  limit
 } from 'firebase/firestore';
 
 const DOCUMENTS_COLLECTION = 'documents';
@@ -100,6 +101,50 @@ export async function getRecentDocumentsFromFirestore(monthsBack = 3) {
     return allDocs.filter(doc => {
       const docDate = doc.createdAt?.toDate?.() || new Date(doc.uploadDate);
       return docDate >= cutoff;
+    });
+  }
+}
+
+/**
+ * Gets documents within a specific date range from Firebase Firestore.
+ * Enforces a maximum range of 6 months.
+ * @param {Date} startDate - Start of the date range (inclusive)
+ * @param {Date} endDate - End of the date range (inclusive)
+ * @returns {Promise<Array>} Array of documents within the date range, sorted newest first
+ */
+export async function getDocumentsByDateRange(startDate, endDate) {
+  // Enforce max 6-month range (using 190 days to account for 31-day months)
+  const maxRangeMs = 190 * 24 * 60 * 60 * 1000;
+  if (endDate - startDate > maxRangeMs) {
+    throw new Error('Date range cannot exceed 6 months.');
+  }
+
+  try {
+    const startTimestamp = Timestamp.fromDate(startDate);
+    const endTimestamp = Timestamp.fromDate(endDate);
+
+    const q = query(
+      collection(db, DOCUMENTS_COLLECTION),
+      where('createdAt', '>=', startTimestamp),
+      where('createdAt', '<=', endTimestamp),
+      orderBy('createdAt', 'desc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    // If server-side query fails, fall back to client-side filtering
+    if (error.message?.includes('6 months')) throw error;
+
+    console.warn('Server-side date range query failed, falling back to client-side filter:', error.message);
+    const allDocs = await getAllDocumentsFromFirestore();
+
+    return allDocs.filter(doc => {
+      const docDate = doc.createdAt?.toDate?.() || new Date(doc.uploadDate);
+      return docDate >= startDate && docDate <= endDate;
     });
   }
 }
@@ -198,5 +243,32 @@ export async function deleteDocumentFromFirestore(documentId) {
   } catch (error) {
     console.error('Error deleting document from Firestore:', error);
     throw new Error(`Failed to delete document: ${error.message}`);
+  }
+}
+
+/**
+ * Gets the date of the very first (oldest) document uploaded.
+ * @returns {Promise<Date | null>} The date of the first upload, or null if no docs exist.
+ */
+export async function getOldestDocumentDate() {
+  try {
+    const q = query(
+      collection(db, DOCUMENTS_COLLECTION),
+      orderBy('createdAt', 'asc'),
+      limit(1)
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const oldestDoc = querySnapshot.docs[0].data();
+    return oldestDoc.createdAt?.toDate?.() || new Date(oldestDoc.uploadDate);
+  } catch (error) {
+    console.error('Error getting oldest document date:', error);
+    // If the index is missing, return a fallback very old date so it doesn't break the UI
+    return new Date('2020-01-01');
   }
 }

@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FileText, Shield, LogIn, LogOut, Menu, X } from 'lucide-react';
+import { FileText, FileArchive, Shield, LogIn, LogOut, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/use-auth';
@@ -34,6 +34,12 @@ export function Header() {
                 <Link href="/admin">
                   <Shield className="mr-2 h-4 w-4" />
                   Admin
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link href="/admin/backup">
+                  <FileArchive className="mr-2 h-4 w-4" />
+                  Backup
                 </Link>
               </Button>
               <Button variant="outline" onClick={logout}>
@@ -101,6 +107,12 @@ export function Header() {
                   <Link href="/admin" onClick={() => setIsMobileMenuOpen(false)}>
                     <Shield className="mr-2 h-4 w-4" />
                     Admin
+                  </Link>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start" asChild>
+                  <Link href="/admin/backup" onClick={() => setIsMobileMenuOpen(false)}>
+                    <FileArchive className="mr-2 h-4 w-4" />
+                    Backup
                   </Link>
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={() => { logout(); setIsMobileMenuOpen(false); }}>
