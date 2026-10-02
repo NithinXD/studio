@@ -8,10 +8,10 @@ import type { Document, DocumentStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Download, FileType, Filter, Folder, Hourglass, User, X, XCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Calendar, Download, FileType, Filter, Folder, History, Hourglass, User, X, XCircle, CheckCircle2 } from 'lucide-react';
 import { withAuth, getUsernameFromEmail } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAllDocumentsFromFirestore } from '@/lib/firebaseService';
+import { getAllDocumentsFromFirestore, getRecentDocumentsFromFirestore } from '@/lib/firebaseService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -59,6 +59,9 @@ function AdminDashboardPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [downloadingWatermark, setDownloadingWatermark] = useState<string | null>(null);
   
+  // Date range filter: 'recent' = last 4 months (fast), 'all' = everything (slow)
+  const [dateRange, setDateRange] = useState<'recent' | 'all'>('recent');
+  
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -96,10 +99,12 @@ function AdminDashboardPage() {
       setLoading(true);
       const startTime = performance.now();
       try {
-        const allDocuments = await getAllDocumentsFromFirestore();
+        const allDocuments = dateRange === 'recent'
+          ? await getRecentDocumentsFromFirestore(3)
+          : await getAllDocumentsFromFirestore();
         const endTime = performance.now();
         
-        console.log(`⏱️ Dashboard Fetch Time: ${(endTime - startTime).toFixed(2)} ms (${allDocuments.length} documents)`);
+        console.log(`⏱️ Dashboard Fetch Time: ${(endTime - startTime).toFixed(2)} ms (${allDocuments.length} documents, mode: ${dateRange})`);
         
         setDocuments(allDocuments);
         setFilteredDocuments(allDocuments);
@@ -117,7 +122,7 @@ function AdminDashboardPage() {
     };
 
     fetchDocuments();
-  }, [toast]);
+  }, [toast, dateRange]);
 
   // Sync selected account from URL (?account=<email>)
   useEffect(() => {
@@ -217,8 +222,39 @@ function AdminDashboardPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Admin Dashboard</CardTitle>
-        <CardDescription>Review and manage all document submissions.</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Admin Dashboard</CardTitle>
+            <CardDescription>Review and manage all document submissions.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-md border">
+              <Button
+                variant={dateRange === 'recent' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDateRange('recent')}
+                className="rounded-r-none gap-1.5"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Last 3 Months
+              </Button>
+              <Button
+                variant={dateRange === 'all' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setDateRange('all')}
+                className="rounded-l-none gap-1.5"
+              >
+                <History className="h-3.5 w-3.5" />
+                All Time
+              </Button>
+            </div>
+            {/* {!loading && (
+              <span className="text-xs text-muted-foreground">
+                {documents.length} docs
+              </span>
+            )} */}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {selectedAccountEmail ? (

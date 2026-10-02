@@ -10,7 +10,8 @@ import {
   query, 
   where, 
   orderBy,
-  getDoc
+  getDoc,
+  Timestamp
 } from 'firebase/firestore';
 
 const DOCUMENTS_COLLECTION = 'documents';
@@ -57,6 +58,49 @@ export async function getAllDocumentsFromFirestore() {
   } catch (error) {
     console.error('Error getting documents from Firestore:', error);
     throw new Error(`Failed to retrieve documents: ${error.message}`);
+  }
+}
+
+/**
+ * Gets documents from the last N months from Firebase Firestore.
+ * Uses a server-side Firestore query filter to avoid downloading the entire collection.
+ * This reduces network transfer, memory usage, and Firestore read billing.
+ * @param {number} monthsBack - Number of months to look back (default: 3)
+ * @returns {Promise<Array>} Array of recent documents, sorted newest first
+ */
+export async function getRecentDocumentsFromFirestore(monthsBack = 3) {
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
+    const cutoffTimestamp = Timestamp.fromDate(cutoffDate);
+
+    // Query with server-side date filter — only reads matching docs (saves Firestore reads + bandwidth)
+    const q = query(
+      collection(db, DOCUMENTS_COLLECTION),
+      where('createdAt', '>=', cutoffTimestamp),
+      orderBy('createdAt', 'desc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const documents = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return documents;
+  } catch (error) {
+    // If the query fails (e.g. missing index, or old docs without createdAt),
+    // fall back to fetching all and filtering client-side
+    console.warn('Server-side date filter failed, falling back to client-side filter:', error.message);
+
+    const allDocs = await getAllDocumentsFromFirestore();
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - monthsBack);
+
+    return allDocs.filter(doc => {
+      const docDate = doc.createdAt?.toDate?.() || new Date(doc.uploadDate);
+      return docDate >= cutoff;
+    });
   }
 }
 
